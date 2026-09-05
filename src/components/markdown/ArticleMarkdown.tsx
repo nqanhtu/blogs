@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Markdown } from '@tanstack/markdown/react'
 import { highlightToHtml, normalizeLanguage } from '@tanstack/highlight'
 import { generateSlug } from '../../lib/markdown/slug'
-import { Check, Copy, ExternalLink, Hash } from 'lucide-react'
+import { Check, Copy, ExternalLink, Hash, Info, Lightbulb, AlertTriangle, AlertCircle } from 'lucide-react'
 
 interface ArticleMarkdownProps {
   content: string
@@ -182,10 +182,109 @@ export function ArticleTable({ children, ...props }: React.TableHTMLAttributes<H
   )
 }
 
+export type CalloutType = 'note' | 'tip' | 'warning' | 'important'
+
+export function ArticleCallout({
+  type = 'note',
+  title,
+  children,
+}: {
+  type?: CalloutType
+  title?: string
+  children: React.ReactNode
+}) {
+  const config = {
+    note: {
+      border: 'border-[var(--accent)]',
+      bg: 'bg-[var(--accent-subtle)]/50',
+      text: 'text-[var(--accent)]',
+      icon: Info,
+      defaultTitle: 'Note',
+    },
+    tip: {
+      border: 'border-[var(--success)]',
+      bg: 'bg-[var(--success)]/10',
+      text: 'text-[var(--success)]',
+      icon: Lightbulb,
+      defaultTitle: 'Tip',
+    },
+    warning: {
+      border: 'border-[var(--warning)]',
+      bg: 'bg-[var(--warning)]/10',
+      text: 'text-[var(--warning)]',
+      icon: AlertTriangle,
+      defaultTitle: 'Warning',
+    },
+    important: {
+      border: 'border-[var(--error)]',
+      bg: 'bg-[var(--error)]/10',
+      text: 'text-[var(--error)]',
+      icon: AlertCircle,
+      defaultTitle: 'Important',
+    },
+  }[type]
+
+  const IconComponent = config.icon
+
+  return (
+    <div className={`my-6 rounded-lg border-l-4 ${config.border} ${config.bg} p-4 text-sm leading-relaxed`}>
+      <div className={`flex items-center gap-1.5 font-semibold text-xs uppercase tracking-wider ${config.text} mb-1.5`}>
+        <IconComponent className="w-4 h-4 stroke-[1.5]" aria-hidden="true" />
+        <span>{title || config.defaultTitle}</span>
+      </div>
+      <div className="text-[var(--text-secondary)]">{children}</div>
+    </div>
+  )
+}
+
+export function ArticleList({
+  ordered = false,
+  children,
+  ...props
+}: {
+  ordered?: boolean
+  children?: React.ReactNode
+} & React.HTMLAttributes<HTMLOListElement | HTMLUListElement>) {
+  if (ordered) {
+    return (
+      <ol className="my-4 list-decimal pl-6 space-y-1 text-[var(--text-primary)]" {...props}>
+        {children}
+      </ol>
+    )
+  }
+  return (
+    <ul className="my-4 list-disc pl-6 space-y-1 text-[var(--text-primary)]" {...props}>
+      {children}
+    </ul>
+  )
+}
+
 export function ArticleQuote({
   children,
   ...props
 }: React.BlockquoteHTMLAttributes<HTMLQuoteElement>) {
+  // Check for callout marker like [!NOTE], [!TIP], [!WARNING], [!IMPORTANT]
+  const extractText = (node: any): string => {
+    if (typeof node === 'string') return node
+    if (Array.isArray(node)) return node.map(extractText).join('')
+    if (node && typeof node === 'object' && node.props && node.props.children) {
+      return extractText(node.props.children)
+    }
+    return ''
+  }
+
+  const rawText = extractText(children).trim()
+  const match = rawText.match(/^\[!(NOTE|TIP|WARNING|IMPORTANT)\]/i)
+
+  if (match && match[1]) {
+    const type = match[1].toLowerCase() as CalloutType
+    return (
+      <ArticleCallout type={type}>
+        {children}
+      </ArticleCallout>
+    )
+  }
+
   return (
     <blockquote
       className="border-l-4 border-[var(--border-strong)] pl-4 py-1 my-6 text-[var(--text-secondary)] italic bg-[var(--bg-secondary)]/40 rounded-r-md"
@@ -231,6 +330,8 @@ export function ArticleMarkdown({ content }: ArticleMarkdownProps) {
           a: (props) => <ArticleLink {...props} />,
           table: (props) => <ArticleTable {...props} />,
           blockquote: (props) => <ArticleQuote {...props} />,
+          ul: (props) => <ArticleList ordered={false} {...props} />,
+          ol: (props) => <ArticleList ordered={true} {...props} />,
           img: (props) => <ArticleImage {...props} />,
         }}
       >

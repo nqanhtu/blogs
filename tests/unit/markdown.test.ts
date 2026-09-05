@@ -77,6 +77,13 @@ Another source mentions【12†source】that Nitro powers the server layer.
     expect(res.artifacts).toContain('【12†source】')
   })
 
+  it('detects conceptual unicode ChatGPT citation markers like cite and filecite', () => {
+    const input = 'Here is deep research findingcite turn0search2  and another file reference filecite turn0search5 .'
+    const res = detectChatGPTCitations(input)
+    expect(res.hasUnresolved).toBe(true)
+    expect(res.artifacts.length).toBeGreaterThanOrEqual(2)
+  })
+
   it('returns false when no citations exist', () => {
     const cleanInput = `
 Vite uses Rollup for production builds [see docs](https://vite.dev).

@@ -18,6 +18,9 @@ const CHATGPT_CITATION_PATTERNS = [
   /\[cite:[^\]]+\]/gi,
   /\(cite:[^)]+\)/gi,
   /\bcite:\s*https?:\/\/[^\s\)]+/gi,
+  /[\uE200](?:cite|filecite|url)[^\uE201\n]*[\uE201]?/gi,
+  /[\uE200][^\uE201\n]+[\uE201]?/g,
+  /\b(?:filecite|cite|url)turn\d+[^\s\)\],]+/gi,
 ]
 
 export function detectChatGPTCitations(markdown: string): CitationDetectionResult {

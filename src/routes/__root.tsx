@@ -10,6 +10,9 @@ export const Route = createRootRoute({
       { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
       { title: 'Personal Markdown Research Journal' },
       { name: 'description', content: 'Lightweight personal research journal and markdown publisher.' },
+      { property: 'og:image', content: '/og.svg' },
+      { name: 'twitter:card', content: 'summary_large_image' },
+      { name: 'twitter:image', content: '/og.svg' },
     ],
     links: [
       { rel: 'stylesheet', href: styles },

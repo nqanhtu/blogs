@@ -24,6 +24,7 @@ export const Route = createFileRoute('/articles/$slug')({
     const { metadata } = loaderData.article
     const siteUrl = process.env.PUBLIC_SITE_URL || 'http://localhost:3000'
     const canonicalUrl = `${siteUrl.replace(/\/+$/, '')}/articles/${params.slug}`
+    const ogImageUrl = `${siteUrl.replace(/\/+$/, '')}/og.svg?title=${encodeURIComponent(metadata.title)}&desc=${encodeURIComponent(metadata.description || '')}`
     const jsonLd = generateStructuredData(metadata, canonicalUrl)
 
     return {
@@ -36,10 +37,12 @@ export const Route = createFileRoute('/articles/$slug')({
         { property: 'og:description', content: metadata.description || metadata.title },
         { property: 'og:type', content: 'article' },
         { property: 'og:url', content: canonicalUrl },
+        { property: 'og:image', content: ogImageUrl },
         // Twitter
         { name: 'twitter:card', content: 'summary_large_image' },
         { name: 'twitter:title', content: metadata.title },
         { name: 'twitter:description', content: metadata.description || metadata.title },
+        { name: 'twitter:image', content: ogImageUrl },
       ],
       links: [{ rel: 'canonical', href: canonicalUrl }],
       scripts: [
