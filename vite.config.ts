@@ -13,6 +13,12 @@ export default defineConfig({
   },
   plugins: [
     nitro({
+      vercel: {
+        regions: ['sin1'],
+        functions: {
+          regions: ['sin1'],
+        },
+      },
       handlers: [
         { route: '/feed.xml', handler: './server/routes/feed.xml.ts' },
         { route: '/sitemap.xml', handler: './server/routes/sitemap.xml.ts' },
