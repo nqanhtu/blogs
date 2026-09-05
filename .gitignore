@@ -1,0 +1,11 @@
+node_modules/
+.output/
+.nitro/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+.vinxi/
+.agents/skills/
+routeTree.gen.ts
