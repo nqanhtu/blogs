@@ -1,9 +1,9 @@
-import { defineHandler, getQuery } from 'nitro'
+import { defineHandler } from 'nitro'
 
-export default defineHandler(async (event) => {
-  const query = getQuery(event)
-  const title = String(query.title || 'Personal Markdown Research Journal')
-  const description = String(query.desc || 'A personal journal of technical research, deep dives, and mental models.')
+export default defineHandler(async (event: any) => {
+  const url = new URL(event.url || event.path || '/', 'http://localhost:3000')
+  const title = url.searchParams.get('title') || 'Personal Markdown Research Journal'
+  const description = url.searchParams.get('desc') || 'A personal journal of technical research, deep dives, and mental models.'
   const siteUrl = (process.env.PUBLIC_SITE_URL || 'http://localhost:3000').replace(/^https?:\/\//, '')
 
   // Escape XML characters
