@@ -1,4 +1,12 @@
-import React, { useState, useEffect, useTransition, useId } from 'react'
+import React, {
+  useState,
+  useEffect,
+  useTransition,
+  useId,
+  useRef,
+  useDeferredValue,
+  Component,
+} from 'react'
 import { normalizeMarkdown } from '../../lib/markdown/normalize'
 import { validateArticle } from '../../lib/markdown/validate'
 import { generateSlug } from '../../lib/markdown/slug'
@@ -30,10 +38,37 @@ interface MarkdownPublisherProps {
 }
 
 const DRAFT_STORAGE_KEY = 'publisher_draft_v1'
+const EMPTY_METADATA: Partial<ArticleMetadata> = {}
+
+class PreviewErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: any) {
+    console.warn('Preview rendering warning:', error)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-4 rounded-lg bg-[var(--warning)]/10 border border-[var(--warning)]/30 text-[var(--warning)] text-xs">
+          Preview temporarily unavailable while typing syntax. Text editor remains fully functional.
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 export function MarkdownPublisher({
   initialMarkdown = '',
-  initialMetadata = {},
+  initialMetadata = EMPTY_METADATA,
   isEditing = false,
   onPublish,
 }: MarkdownPublisherProps) {
@@ -44,6 +79,9 @@ export function MarkdownPublisher({
   const [description, setDescription] = useState(initialMetadata.description || '')
   const [type, setType] = useState<ArticleType>(initialMetadata.type || 'research')
   const [tagsInput, setTagsInput] = useState((initialMetadata.tags || []).join(', '))
+
+  // Defer expensive AST parsing and live preview so typing is 100% non-blocking
+  const deferredMarkdown = useDeferredValue(rawMarkdown)
 
   // View state: 'edit' vs 'preview' (for mobile tabbed view)
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit')
@@ -69,29 +107,31 @@ export function MarkdownPublisher({
   const tagsId = useId()
   const markdownId = useId()
 
-  // 1. Restore draft on mount if creating new article
+  // 1. Restore draft on mount ONCE if creating new article
+  const hasRestoredDraft = useRef(false)
   useEffect(() => {
-    if (!isEditing) {
-      try {
-        const saved = localStorage.getItem(DRAFT_STORAGE_KEY)
-        if (saved) {
-          const parsed = JSON.parse(saved)
-          if (parsed && typeof parsed === 'object') {
-            if (parsed.rawMarkdown && !initialMarkdown) setRawMarkdown(parsed.rawMarkdown)
-            if (parsed.title && !initialMetadata.title) setTitle(parsed.title)
-            if (parsed.slug && !initialMetadata.slug) setSlug(parsed.slug)
-            if (parsed.description && !initialMetadata.description) setDescription(parsed.description)
-            if (parsed.type) setType(parsed.type)
-            if (parsed.tagsInput) setTagsInput(parsed.tagsInput)
-          }
+    if (isEditing || hasRestoredDraft.current) return
+    hasRestoredDraft.current = true
+
+    try {
+      const saved = localStorage.getItem(DRAFT_STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.rawMarkdown && !initialMarkdown) setRawMarkdown(parsed.rawMarkdown)
+          if (parsed.title && !initialMetadata.title) setTitle(parsed.title)
+          if (parsed.slug && !initialMetadata.slug) setSlug(parsed.slug)
+          if (parsed.description && !initialMetadata.description) setDescription(parsed.description)
+          if (parsed.type) setType(parsed.type)
+          if (parsed.tagsInput) setTagsInput(parsed.tagsInput)
         }
-      } catch {
-        // Ignore corrupted storage
       }
+    } catch {
+      // Ignore corrupted storage
     }
   }, [isEditing, initialMarkdown, initialMetadata])
 
-  // 2. Autosave draft to localStorage
+  // 2. Autosave draft to localStorage (debounced)
   useEffect(() => {
     if (isEditing) return
     const timeout = setTimeout(() => {
@@ -110,7 +150,7 @@ export function MarkdownPublisher({
     return () => clearTimeout(timeout)
   }, [rawMarkdown, title, slug, description, type, tagsInput, isEditing])
 
-  // 3. Re-validate article health on content change
+  // 3. Re-validate article health on content change (non-blocking via deferredMarkdown)
   useEffect(() => {
     startTransition(() => {
       const tags = tagsInput
@@ -126,19 +166,21 @@ export function MarkdownPublisher({
         tags,
       }
 
-      const h = validateArticle(rawMarkdown, meta)
+      const h = validateArticle(deferredMarkdown, meta)
       setHealth(h)
     })
-  }, [rawMarkdown, title, slug, description, type, tagsInput])
+  }, [deferredMarkdown, title, slug, description, type, tagsInput])
 
-  // 4. Auto-normalize pasted ChatGPT Markdown
+  // 4. Typing in textarea - fast and direct, does not trigger complex parsers
   const handleMarkdownChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value
-    setRawMarkdown(val)
+    setRawMarkdown(e.target.value)
+  }
 
-    // If title or slug are empty, attempt automatic detection from input
-    if (!title) {
-      const norm = normalizeMarkdown(val)
+  // Auto-detect metadata on paste event
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pastedText = e.clipboardData.getData('text')
+    if (pastedText && !title) {
+      const norm = normalizeMarkdown(pastedText)
       if (norm.extractedTitle) {
         setTitle(norm.extractedTitle)
         if (!slug) {
@@ -514,6 +556,7 @@ export function MarkdownPublisher({
                 rows={16}
                 value={rawMarkdown}
                 onChange={handleMarkdownChange}
+                onPaste={handlePaste}
                 placeholder="Paste Markdown copied from ChatGPT or Deep Research here...
 
 ## 1. Introduction
@@ -604,7 +647,7 @@ Key concepts explained in structured prose...
           >
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] border-b border-[var(--border-subtle)] pb-3 mb-6 flex items-center justify-between">
               <span>Live Reading Preview</span>
-              <span className="font-mono text-[11px]">{calculateReadingTime(rawMarkdown)} min read</span>
+              <span className="font-mono text-[11px]">{calculateReadingTime(deferredMarkdown)} min read</span>
             </div>
 
             {/* Article Preview Header */}
@@ -627,8 +670,10 @@ Key concepts explained in structured prose...
             </div>
 
             {/* Article Markdown Body */}
-            {rawMarkdown.trim() ? (
-              <ArticleMarkdown content={rawMarkdown} />
+            {deferredMarkdown.trim() ? (
+              <PreviewErrorBoundary>
+                <ArticleMarkdown content={deferredMarkdown} />
+              </PreviewErrorBoundary>
             ) : (
               <div className="py-16 text-center text-sm text-[var(--text-muted)] italic">
                 Paste or type Markdown on the left to see the live editorial presentation here.
