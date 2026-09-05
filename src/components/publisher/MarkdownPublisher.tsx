@@ -7,7 +7,7 @@ import React, {
   useDeferredValue,
   Component,
 } from 'react'
-import { normalizeMarkdown } from '../../lib/markdown/normalize'
+import { normalizeMarkdown, fixDuplicateH1Headings } from '../../lib/markdown/normalize'
 import { validateArticle } from '../../lib/markdown/validate'
 import { generateSlug } from '../../lib/markdown/slug'
 import { calculateReadingTime } from '../../lib/markdown/reading-time'
@@ -176,10 +176,28 @@ export function MarkdownPublisher({
     setRawMarkdown(e.target.value)
   }
 
-  // Auto-detect metadata on paste event
+  // Auto-detect metadata and sanitize H1 on paste event
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const pastedText = e.clipboardData.getData('text')
-    if (pastedText && !title) {
+    if (!pastedText) return
+
+    // If editor is empty, automatically clean duplicate H1 and fill metadata
+    if (rawMarkdown.trim() === '') {
+      e.preventDefault()
+      const norm = normalizeMarkdown(pastedText)
+      if (!title && norm.extractedTitle) {
+        setTitle(norm.extractedTitle)
+        if (!slug) setSlug(generateSlug(norm.extractedTitle))
+      }
+      if (!description && norm.extractedMetadata?.description) {
+        setDescription(norm.extractedMetadata.description)
+      }
+      setRawMarkdown(norm.normalizedMarkdown)
+      return
+    }
+
+    // If pasting into existing text, detect title if empty
+    if (!title) {
       const norm = normalizeMarkdown(pastedText)
       if (norm.extractedTitle) {
         setTitle(norm.extractedTitle)
@@ -187,10 +205,16 @@ export function MarkdownPublisher({
           setSlug(generateSlug(norm.extractedTitle))
         }
       }
-      if (norm.extractedMetadata?.description && !description) {
+      if (!description && norm.extractedMetadata?.description) {
         setDescription(norm.extractedMetadata.description)
       }
     }
+  }
+
+  // 1-Click action to demote / fix duplicate H1s in body
+  const handleFixDuplicateH1 = () => {
+    const fixed = fixDuplicateH1Headings(rawMarkdown, title)
+    setRawMarkdown(fixed)
   }
 
   // Handle explicit Auto-Format button
@@ -239,18 +263,35 @@ export function MarkdownPublisher({
   // Handle Publish Submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!health.valid) {
+
+    // Auto-fix duplicate H1 headings if present before validating submission
+    let finalMarkdown = rawMarkdown
+    if (health.items.some((item) => item.message.includes('Duplicate H1'))) {
+      finalMarkdown = fixDuplicateH1Headings(rawMarkdown, title)
+      setRawMarkdown(finalMarkdown)
+    }
+
+    const tags = tagsInput
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+
+    const metaCheck: Partial<ArticleMetadata> = {
+      title: title.trim(),
+      slug: slug.trim(),
+      description: description.trim(),
+      type,
+      tags,
+    }
+
+    const currentHealth = validateArticle(finalMarkdown, metaCheck)
+    if (!currentHealth.valid) {
       setErrorMessage('Please resolve article health errors before publishing.')
       return
     }
 
     setPublishStatus('publishing')
     setErrorMessage(null)
-
-    const tags = tagsInput
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean)
 
     const publishedAt =
       initialMetadata.publishedAt || new Date().toISOString().slice(0, 10)
@@ -268,7 +309,7 @@ export function MarkdownPublisher({
 
     try {
       const result = await onPublish({
-        markdown: rawMarkdown,
+        markdown: finalMarkdown,
         metadata,
       })
 
@@ -591,27 +632,40 @@ Key concepts explained in structured prose...
 
               <ul className="space-y-1.5 text-xs">
                 {health.items.map((item, idx) => (
-                  <li key={idx} className="flex items-start gap-2">
-                    {item.type === 'success' && (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-[var(--success)] shrink-0 mt-0.5" aria-hidden="true" />
+                  <li key={idx} className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 flex-1">
+                      {item.type === 'success' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[var(--success)] shrink-0 mt-0.5" aria-hidden="true" />
+                      )}
+                      {item.type === 'warning' && (
+                        <AlertTriangle className="w-3.5 h-3.5 text-[var(--warning)] shrink-0 mt-0.5" aria-hidden="true" />
+                      )}
+                      {item.type === 'error' && (
+                        <XCircle className="w-3.5 h-3.5 text-[var(--error)] shrink-0 mt-0.5" aria-hidden="true" />
+                      )}
+                      <span
+                        className={
+                          item.type === 'error'
+                            ? 'text-[var(--error)] font-medium'
+                            : item.type === 'warning'
+                            ? 'text-[var(--warning)]'
+                            : 'text-[var(--text-secondary)]'
+                        }
+                      >
+                        {item.message}
+                      </span>
+                    </div>
+                    {item.type === 'error' && item.message.includes('Duplicate H1') && (
+                      <button
+                        type="button"
+                        onClick={handleFixDuplicateH1}
+                        title="Auto-fix duplicate H1 headings in body"
+                        className="shrink-0 px-2 py-0.5 rounded-md bg-[var(--accent)] text-white text-[11px] font-medium hover:opacity-90 active:scale-95 transition-all flex items-center gap-1 shadow-xs"
+                      >
+                        <Sparkles className="w-3 h-3" aria-hidden="true" />
+                        <span>Auto-fix H1</span>
+                      </button>
                     )}
-                    {item.type === 'warning' && (
-                      <AlertTriangle className="w-3.5 h-3.5 text-[var(--warning)] shrink-0 mt-0.5" aria-hidden="true" />
-                    )}
-                    {item.type === 'error' && (
-                      <XCircle className="w-3.5 h-3.5 text-[var(--error)] shrink-0 mt-0.5" aria-hidden="true" />
-                    )}
-                    <span
-                      className={
-                        item.type === 'error'
-                          ? 'text-[var(--error)] font-medium'
-                          : item.type === 'warning'
-                          ? 'text-[var(--warning)]'
-                          : 'text-[var(--text-secondary)]'
-                      }
-                    >
-                      {item.message}
-                    </span>
                   </li>
                 ))}
               </ul>

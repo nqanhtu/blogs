@@ -8,7 +8,12 @@ import {
   serializeFrontmatter,
   ArticleMetadataSchema,
 } from '../../src/lib/markdown/metadata'
-import { normalizeMarkdown, linkifyBareUrls, sanitizeDangerousHtml } from '../../src/lib/markdown/normalize'
+import {
+  normalizeMarkdown,
+  linkifyBareUrls,
+  sanitizeDangerousHtml,
+  fixDuplicateH1Headings,
+} from '../../src/lib/markdown/normalize'
 import { validateArticle } from '../../src/lib/markdown/validate'
 import { serializeArticle } from '../../src/lib/markdown/serialize'
 import { parseArticle } from '../../src/lib/markdown/parse'
@@ -173,6 +178,22 @@ const x = 1;
   it('sanitizes dangerous HTML but preserves text', () => {
     const unsafe = '<script>evil()</script><iframe src="javascript:evil()"></iframe>Hello'
     expect(sanitizeDangerousHtml(unsafe)).toBe('Hello')
+  })
+
+  it('removes duplicate H1 matching document title and demotes subsequent H1s to H2', () => {
+    const raw = `# Deep Research: Docker Mentality\n\n# Chapter 1: Images\nContent 1\n# Chapter 2: Containers\nContent 2`
+    const fixed = fixDuplicateH1Headings(raw, 'Deep Research: Docker Mentality')
+    expect(fixed).not.toContain('# Deep Research: Docker Mentality')
+    expect(fixed).toContain('## Chapter 1: Images')
+    expect(fixed).toContain('## Chapter 2: Containers')
+    expect(fixed).not.toMatch(/^#\s+/m)
+  })
+
+  it('never touches python or shell comments inside code blocks when fixing H1s', () => {
+    const raw = `# Title\n\n\`\`\`python\n# This is a python comment\ndef hello():\n    return 42\n\`\`\`\n\n# Another Section\n`
+    const fixed = fixDuplicateH1Headings(raw, 'Title')
+    expect(fixed).toContain('# This is a python comment')
+    expect(fixed).toContain('## Another Section')
   })
 })
 

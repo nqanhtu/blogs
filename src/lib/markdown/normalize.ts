@@ -75,6 +75,67 @@ export function linkifyBareUrls(markdown: string): string {
 }
 
 /**
+ * Fixes duplicate H1 headings in markdown body.
+ * 1. Protects code blocks (fenced ``` and inline `).
+ * 2. If the first H1 matches the document title, removes that H1 line.
+ * 3. Demotes any other H1 headings (# Heading) to H2 (## Heading).
+ * 4. Restores code blocks cleanly.
+ */
+export function fixDuplicateH1Headings(markdown: string, documentTitle?: string): string {
+  if (!markdown || typeof markdown !== 'string') return ''
+
+  // Protect code blocks (fenced and inline)
+  const codeSegments: string[] = []
+  const placeholder = '___CODE_SEGMENT_H1_PROTECT___'
+
+  const textWithoutCode = markdown.replace(/(```[\s\S]*?```|`[^`]+`)/g, (match) => {
+    codeSegments.push(match)
+    return `${placeholder}${codeSegments.length - 1}___`
+  })
+
+  const lines = textWithoutCode.split(/\r?\n/)
+  const cleanTitle = documentTitle
+    ? documentTitle.toLowerCase().replace(/[\s\-_:]+/g, ' ').trim()
+    : null
+
+  let hasHandledMatchingTitle = false
+  const resultLines: string[] = []
+
+  for (const line of lines) {
+    if (typeof line !== 'string') continue
+    // Match H1 heading: starts with '# ' (not '##')
+    const h1Match = line.match(/^(\s*)#\s+([^\n\r]+)$/)
+
+    if (h1Match && h1Match[2]) {
+      const indent = h1Match[1] ?? ''
+      const headingText = h1Match[2].trim()
+      const cleanHeading = headingText.toLowerCase().replace(/[\s\-_:]+/g, ' ').trim()
+
+      // If matches the document title, drop this line to avoid duplicate title in body
+      if (!hasHandledMatchingTitle && cleanTitle && cleanHeading === cleanTitle) {
+        hasHandledMatchingTitle = true
+        continue
+      }
+
+      // Demote to H2
+      resultLines.push(`${indent}## ${headingText}`)
+    } else {
+      resultLines.push(line)
+    }
+  }
+
+  let processed = resultLines.join('\n')
+
+  // Restore code blocks
+  processed = processed.replace(
+    /___CODE_SEGMENT_H1_PROTECT___(\d+)___/g,
+    (_, idx) => codeSegments[Number(idx)] ?? ''
+  )
+
+  return processed
+}
+
+/**
  * Normalizes Markdown input copied from ChatGPT / Deep Research.
  */
 export function normalizeMarkdown(raw: string): NormalizationResult {
@@ -89,9 +150,12 @@ export function normalizeMarkdown(raw: string): NormalizationResult {
   const { title: extractedH1Title, remainingMarkdown: bodyWithoutH1 } =
     extractFirstH1(withoutFrontmatter)
 
-  let processed = bodyWithoutH1
+  const title = frontmatterMeta?.title || extractedH1Title || undefined
 
-  // 3. Normalize fenced code blocks:
+  // 3. Demote any remaining H1 headings to H2 to prevent duplicate H1 errors
+  let processed = fixDuplicateH1Headings(bodyWithoutH1, title)
+
+  // 4. Normalize fenced code blocks:
   // - Ensure trailing code fences are properly closed
   const codeBlockRegex = /(```)([a-zA-Z0-9_\-\.]+)?([^\n]*\n)([\s\S]*?)(```|$)/g
   processed = processed.replace(codeBlockRegex, (match, open, lang, restOfFirstLine, code, close) => {
@@ -128,8 +192,6 @@ export function normalizeMarkdown(raw: string): NormalizationResult {
 
   // 6. Ensure trailing single newline
   normalized = normalized.trim() + '\n'
-
-  const title = frontmatterMeta?.title || extractedH1Title || undefined
 
   return {
     normalizedMarkdown: normalized,
