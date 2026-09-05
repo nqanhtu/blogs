@@ -17,6 +17,7 @@ export default defineConfig({
         { route: '/feed.xml', handler: './server/routes/feed.xml.ts' },
         { route: '/sitemap.xml', handler: './server/routes/sitemap.xml.ts' },
         { route: '/robots.txt', handler: './server/routes/robots.txt.ts' },
+        { route: '/og.svg', handler: './server/routes/og.svg.ts' },
       ],
       rollupConfig: {
         external: [/^@sentry\//],
