@@ -3,8 +3,10 @@ title: Những cuốn sách đáng đọc nhất về tiền, tài sản và t�
 slug: nhung-cuon-sach-dang-doc-nhat-ve-tien-tai-san-va-tu-do-tai-chinh
 description: ""
 type: research
-tags: []
+tags:
+  - books
 publishedAt: "2026-09-05"
+updatedAt: "2026-09-05"
 ---
 
 Tiền không chỉ là câu chuyện về việc kiếm được bao nhiêu.
